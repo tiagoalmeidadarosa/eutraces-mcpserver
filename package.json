@@ -15,7 +15,7 @@
     "prepare": "npm run build",
     "watch": "tsc --watch",
     "inspector": "npx @modelcontextprotocol/inspector build/index.js",
-    "start": "node build/web-server.js",
+    "start": "node build/mcp-sse-server.js",
     "web-server": "node build/web-server.js",
     "mcp-sse": "node build/mcp-sse-server.js"
   },

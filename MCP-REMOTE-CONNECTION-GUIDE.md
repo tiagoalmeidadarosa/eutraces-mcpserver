@@ -198,9 +198,11 @@ Here's a complete working configuration:
 
 **The URL you need is**: `https://your-app-name.azurewebsites.net/mcp`
 
-However, the MCP over SSE transport is still evolving. For now, I recommend:
-1. Use the local MCP server for Cline integration
-2. Use the REST API for remote programmatic access
-3. Monitor MCP SDK updates for better remote support
+This is now a **pure MCP server** that:
+- ✅ Supports the MCP protocol over SSE
+- ✅ Provides all 5 EUDR tools (query_endpoint, get_examples, validate_structure, get_business_rules, search_documentation)
+- ✅ Includes full resource access to EUDR documentation
+- ✅ Works with Cline remote connections
+- ✅ No REST API - pure MCP protocol only
 
-The web server I created provides full functionality via REST endpoints and is ready for production use!
+Deploy to Azure and use the SSE transport URL in your Cline MCP settings!

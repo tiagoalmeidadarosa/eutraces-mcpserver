@@ -725,7 +725,7 @@ async function main() {
             result = { 
               error: { 
                 code: -32601, 
-                message: `Tool calling not fully implemented in SSE mode. Please use the REST API endpoints at /tools/${params?.name} instead.` 
+                message: `Tool calling not fully implemented in SSE mode. This is a pure MCP server for remote connection.` 
               } 
             };
             break;
@@ -734,7 +734,7 @@ async function main() {
             result = { 
               error: { 
                 code: -32601, 
-                message: `Method ${method} not supported in simplified SSE implementation. Please use the REST API endpoints instead.` 
+                message: `Method ${method} not supported in simplified SSE implementation. This is a pure MCP server.` 
               } 
             };
         }
