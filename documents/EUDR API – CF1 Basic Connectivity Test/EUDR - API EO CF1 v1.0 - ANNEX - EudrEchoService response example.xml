@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+	<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/">
+		<S:Header>
+			<ns0:Security xmlns:ns0="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd" 
+						  xmlns:ns1="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
+				<ns1:Timestamp>
+					<ns1:Created>2024-05-06T22:51:33.035+02:00</ns1:Created>
+					<ns1:Expires>2024-05-06T22:51:38.036+02:00</ns1:Expires>
+				</ns1:Timestamp>
+			</ns0:Security>
+		</S:Header>
+		<S:Body>
+			<ns2:EudrEchoResponse xmlns:ns2="http://ec.europa.eu/tracesnt/eudr/echo" 
+								  xmlns:ns3="http://ec.europa.eu/sanco/tracesnt/base/v4" 
+								  xmlns:ns4="http://ec.europa.eu/tracesnt/body/v3" 
+								  xmlns:ns5="urn:un:unece:uncefact:codelist:standard:ISO:ISO2AlphaLanguageCode:2006-10-27">
+				<ns2:status>User username, using third party system eudr-repository and IP address X.X.X.X says: hello</ns2:status>
+			</ns2:EudrEchoResponse>
+		</S:Body>
+	</S:Envelope>
