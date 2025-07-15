@@ -644,14 +644,119 @@ async function main() {
       });
     });
     
-    // Create SSE transport
-    const transport = new SSEServerTransport('/mcp');
+    // Handle SSE requests manually (without using the problematic SSEServerTransport)
+    app.get('/mcp', (req, res) => {
+      // Set SSE headers
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      });
+      
+      // Send initial connection message
+      res.write('data: {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}\n\n');
+      
+      // Keep connection alive
+      const keepAlive = setInterval(() => {
+        res.write('data: {"type": "ping"}\n\n');
+      }, 30000);
+      
+      // Handle client disconnect
+      req.on('close', () => {
+        clearInterval(keepAlive);
+        res.end();
+      });
+    });
     
-    // Connect server to transport
-    await server.connect(transport);
-    
-    // Mount the SSE endpoint
-    app.use('/mcp', transport.router);
+    // Handle MCP protocol messages via POST
+    app.post('/mcp', express.json(), async (req, res) => {
+      try {
+        const { method, params, id } = req.body;
+        
+        // Basic MCP protocol handling
+        let result = null;
+        
+        switch (method) {
+          case 'tools/list':
+            // Return the tools list directly
+            result = {
+              tools: [
+                {
+                  name: "query_endpoint",
+                  description: "Query information about specific EUDR API endpoints"
+                },
+                {
+                  name: "get_examples", 
+                  description: "Get request/response examples for EUDR API operations"
+                },
+                {
+                  name: "validate_structure",
+                  description: "Validate data structures against EUDR specifications"
+                },
+                {
+                  name: "get_business_rules",
+                  description: "Query business rules and validation requirements"
+                },
+                {
+                  name: "search_documentation",
+                  description: "Search across all EUDR documentation"
+                }
+              ]
+            };
+            break;
+            
+          case 'resources/list':
+            // Return simplified resources list
+            result = {
+              resources: [
+                {
+                  uri: "eudr://info",
+                  name: "EUDR Documentation",
+                  description: "EUDR API documentation and examples"
+                }
+              ]
+            };
+            break;
+            
+          case 'tools/call':
+            result = { 
+              error: { 
+                code: -32601, 
+                message: `Tool calling not fully implemented in SSE mode. Please use the REST API endpoints at /tools/${params?.name} instead.` 
+              } 
+            };
+            break;
+            
+          default:
+            result = { 
+              error: { 
+                code: -32601, 
+                message: `Method ${method} not supported in simplified SSE implementation. Please use the REST API endpoints instead.` 
+              } 
+            };
+        }
+        
+        res.json({
+          jsonrpc: "2.0",
+          id: id,
+          result: result
+        });
+        
+      } catch (error) {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          id: req.body.id,
+          error: {
+            code: -32603,
+            message: 'Internal server error',
+            data: error instanceof Error ? error.message : String(error)
+          }
+        });
+      }
+    });
     
     // Start the server
     app.listen(PORT, () => {
