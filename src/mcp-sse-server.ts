@@ -599,155 +599,188 @@ async function main() {
       });
     });
     
-    // Store active connections and their servers
-    const activeConnections = new Map<string, Server>();
+    // Store active MCP servers by connection ID
+    const activeServers = new Map<string, any>();
     
-    // MCP SSE endpoint - handle both GET and POST
-    app.all('/mcp', async (req, res) => {
-      console.log(`${req.method} request to /mcp from:`, req.ip);
+    // MCP SSE endpoint - GET for initial connection
+    app.get('/mcp', async (req, res) => {
+      console.log('New MCP SSE connection from:', req.ip);
       
-      if (req.method === 'GET') {
-        // Handle SSE connection establishment
-        try {
-          // Create a new MCP server instance for this connection
-          const server = createMCPServer();
-          
-          // Create SSE transport (let it handle the headers)
-          const transport = new SSEServerTransport('/mcp', res);
-          
-          // Store the connection
-          const connectionId = `${req.ip}-${Date.now()}`;
-          activeConnections.set(connectionId, server);
-          
-          // Connect server to transport
-          await server.connect(transport);
-          console.log('MCP server connected via SSE');
-          
-          // Handle client disconnect
-          req.on('close', () => {
-            console.log('SSE client disconnected');
-            activeConnections.delete(connectionId);
-            server.close();
-          });
-          
-          req.on('error', (err) => {
-            console.error('SSE connection error:', err);
-            activeConnections.delete(connectionId);
-            server.close();
-          });
-          
-        } catch (error) {
-          console.error('Failed to setup SSE connection:', error);
-          // Only send error response if headers haven't been sent yet
-          if (!res.headersSent) {
-            res.status(500).json({ error: 'Failed to setup MCP connection' });
-          }
-        }
-      } else if (req.method === 'POST') {
-        // Handle POST requests (client-to-server messages)
-        console.log('POST request body:', req.body);
+      try {
+        // Create a new MCP server instance for this connection
+        const server = createMCPServer();
+        const connectionId = `${req.ip}-${Date.now()}`;
+        activeServers.set(connectionId, server);
         
-        try {
-          // Process the request based on the method
-          const { jsonrpc, id, method, params } = req.body;
-          
-          let result;
-          
-          // Handle different MCP methods
-          if (method === 'tools/list') {
-            const tools = await (new Promise((resolve) => {
-              const server = createMCPServer();
-              // Access the tools directly
-              resolve({
-                tools: [
-                  {
-                    name: "query_endpoint",
-                    description: "Query information about specific EUDR API endpoints",
-                    inputSchema: {
-                      type: "object",
-                      properties: {
-                        operation: { type: "string", description: "The operation or endpoint name to query" },
-                        category: { type: "string", description: "The category of operation" }
-                      },
-                      required: ["operation"]
-                    }
-                  },
-                  {
-                    name: "get_examples",
-                    description: "Get request/response examples for EUDR API operations",
-                    inputSchema: {
-                      type: "object",
-                      properties: {
-                        operation: { type: "string", description: "The operation to get examples for" },
-                        type: { type: "string", enum: ["request", "response"] }
-                      },
-                      required: ["operation"]
-                    }
-                  },
-                  {
-                    name: "search_documentation",
-                    description: "Search across all EUDR documentation",
-                    inputSchema: {
-                      type: "object",
-                      properties: {
-                        query: { type: "string", description: "The search query" },
-                        document_type: { type: "string", enum: ["docx", "pdf", "xml"] },
-                        category: { type: "string", description: "Filter by document category" }
-                      },
-                      required: ["query"]
-                    }
-                  }
-                ]
-              });
-            }));
-            result = tools;
-          } else if (method === 'resources/list') {
-            if (!knowledgeBase) {
-              await initializeKnowledgeBase();
-            }
-            const resources = [];
-            for (const doc of knowledgeBase!.documents) {
-              resources.push({
-                uri: `eudr://document/${encodeURIComponent(doc.filename)}`,
-                mimeType: "text/plain",
-                name: doc.title,
-                description: `${doc.category} - ${doc.filename} (${doc.type.toUpperCase()})`
-              });
-            }
-            result = { resources };
-          } else {
-            throw new Error(`Unknown method: ${method}`);
-          }
-          
-          // Only send response if headers haven't been sent yet
-          if (!res.headersSent) {
-            res.json({
-              jsonrpc: "2.0",
-              id: id,
-              result: result
-            });
-          }
-          
-        } catch (error) {
-          console.error('Failed to handle POST request:', error);
-          // Only send error response if headers haven't been sent yet
-          if (!res.headersSent) {
-            res.status(500).json({
-              jsonrpc: "2.0",
-              id: req.body?.id || null,
-              error: {
-                code: -32603,
-                message: 'Internal error',
-                data: error instanceof Error ? error.message : String(error)
-              }
-            });
-          }
+        // Create SSE transport and let it handle the connection
+        const transport = new SSEServerTransport('/mcp', res);
+        
+        // Connect server to transport
+        await server.connect(transport);
+        console.log('MCP server connected via SSE transport');
+        
+        // Handle client disconnect
+        req.on('close', () => {
+          console.log('MCP SSE client disconnected');
+          activeServers.delete(connectionId);
+          server.close();
+        });
+        
+        req.on('error', (err) => {
+          console.error('MCP SSE connection error:', err);
+          activeServers.delete(connectionId);
+          server.close();
+        });
+        
+      } catch (error) {
+        console.error('Failed to setup MCP SSE connection:', error);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to setup MCP connection' });
         }
-      } else if (req.method === 'OPTIONS') {
-        // Handle CORS preflight
-        res.status(200).send();
-      } else {
-        res.status(405).json({ error: 'Method not allowed' });
+      }
+    });
+    
+    // MCP SSE endpoint - POST for sending messages
+    app.post('/mcp', express.json(), async (req, res) => {
+      console.log('MCP POST request from:', req.ip, 'Body:', req.body);
+      
+      try {
+        if (!knowledgeBase) {
+          await initializeKnowledgeBase();
+        }
+        
+        // Set CORS headers
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        
+        // Handle the request based on the method
+        if (req.body && req.body.method) {
+          switch (req.body.method) {
+            case 'initialize':
+              res.json({
+                protocolVersion: "2024-11-05",
+                capabilities: {
+                  resources: {},
+                  tools: {},
+                  prompts: {},
+                },
+                serverInfo: {
+                  name: "eutraces-mcpserver",
+                  version: "0.1.0",
+                }
+              });
+              break;
+              
+            case 'tools/list':
+              const tools = [
+                {
+                  name: "get_document",
+                  description: "Retrieve a specific EUDR document by filename",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      filename: {
+                        type: "string",
+                        description: "The filename to retrieve"
+                      }
+                    },
+                    required: ["filename"]
+                  }
+                },
+                {
+                  name: "search_documents",
+                  description: "Search through EUDR documents using natural language",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      query: {
+                        type: "string",
+                        description: "Natural language search query"
+                      }
+                    },
+                    required: ["query"]
+                  }
+                },
+                {
+                  name: "get_api_endpoint",
+                  description: "Get information about a specific EUDR API endpoint",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      endpoint: {
+                        type: "string",
+                        description: "The API endpoint name"
+                      }
+                    },
+                    required: ["endpoint"]
+                  }
+                },
+                {
+                  name: "get_validation_rule",
+                  description: "Retrieve a specific validation rule by ID",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      rule_id: {
+                        type: "string",
+                        description: "The rule ID (e.g., 'R001')"
+                      }
+                    },
+                    required: ["rule_id"]
+                  }
+                }
+              ];
+              res.json({ tools });
+              break;
+              
+            case 'resources/list':
+              const resources = [];
+
+              // Add documents as resources
+              for (const doc of knowledgeBase!.documents) {
+                resources.push({
+                  uri: `eudr://document/${encodeURIComponent(doc.filename)}`,
+                  mimeType: "text/plain",
+                  name: doc.title,
+                  description: `${doc.category} - ${doc.filename} (${doc.type.toUpperCase()})`
+                });
+              }
+
+              // Add endpoints as resources
+              for (const endpoint of knowledgeBase!.endpoints) {
+                resources.push({
+                  uri: `eudr://endpoint/${encodeURIComponent(endpoint.name)}`,
+                  mimeType: "application/json",
+                  name: endpoint.name,
+                  description: `${endpoint.method} ${endpoint.url} - ${endpoint.description}`
+                });
+              }
+
+              // Add examples as resources
+              for (const example of knowledgeBase!.examples) {
+                resources.push({
+                  uri: `eudr://example/${encodeURIComponent(example.name)}`,
+                  mimeType: "application/xml",
+                  name: example.name,
+                  description: `Example: ${example.name}`
+                });
+              }
+
+              res.json({ resources });
+              break;
+              
+            default:
+              res.status(400).json({ error: `Unknown method: ${req.body.method}` });
+          }
+        } else {
+          res.status(400).json({ error: 'Invalid request format' });
+        }
+        
+      } catch (error) {
+        console.error('Failed to handle MCP POST request:', error);
+        res.status(500).json({ error: 'Failed to handle MCP request' });
       }
     });
     
