@@ -644,24 +644,25 @@ async function main() {
       });
     });
     
-    // Handle MCP connectivity check - simple response for connection verification
+    // Handle SSE requests for MCP protocol
     app.get('/mcp', (req, res) => {
-      res.json({
-        jsonrpc: "2.0",
-        method: "notifications/initialized",
-        params: {
-          protocolVersion: "2024-11-05",
-          capabilities: {
-            resources: {},
-            tools: {},
-            prompts: {},
-          },
-          serverInfo: {
-            name: "eutraces-mcpserver",
-            version: "0.1.0"
-          }
-        }
+      // Set SSE headers
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       });
+      
+      // Send initial connection message
+      res.write('data: {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {"protocolVersion": "2024-11-05", "capabilities": {"resources": {}, "tools": {}, "prompts": {}}, "serverInfo": {"name": "eutraces-mcpserver", "version": "0.1.0"}}}\n\n');
+      
+      // Send a final message and close connection immediately
+      // This provides connectivity verification without keeping connection alive
+      res.write('data: {"jsonrpc": "2.0", "method": "notifications/ready", "params": {}}\n\n');
+      res.end();
     });
     
     // Handle MCP protocol messages via POST
