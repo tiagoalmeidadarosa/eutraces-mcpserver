@@ -644,30 +644,23 @@ async function main() {
       });
     });
     
-    // Handle SSE requests manually (without using the problematic SSEServerTransport)
+    // Handle MCP connectivity check - simple response for connection verification
     app.get('/mcp', (req, res) => {
-      // Set SSE headers
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      });
-      
-      // Send initial connection message
-      res.write('data: {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}\n\n');
-      
-      // Keep connection alive
-      const keepAlive = setInterval(() => {
-        res.write('data: {"type": "ping"}\n\n');
-      }, 30000);
-      
-      // Handle client disconnect
-      req.on('close', () => {
-        clearInterval(keepAlive);
-        res.end();
+      res.json({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {
+            resources: {},
+            tools: {},
+            prompts: {},
+          },
+          serverInfo: {
+            name: "eutraces-mcpserver",
+            version: "0.1.0"
+          }
+        }
       });
     });
     
