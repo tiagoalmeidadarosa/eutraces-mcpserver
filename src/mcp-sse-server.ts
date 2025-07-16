@@ -609,20 +609,10 @@ async function main() {
       if (req.method === 'GET') {
         // Handle SSE connection establishment
         try {
-          // Set SSE headers
-          res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          });
-          
           // Create a new MCP server instance for this connection
           const server = createMCPServer();
           
-          // Create SSE transport
+          // Create SSE transport (let it handle the headers)
           const transport = new SSEServerTransport('/mcp', res);
           
           // Store the connection
@@ -648,7 +638,10 @@ async function main() {
           
         } catch (error) {
           console.error('Failed to setup SSE connection:', error);
-          res.status(500).json({ error: 'Failed to setup MCP connection' });
+          // Only send error response if headers haven't been sent yet
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to setup MCP connection' });
+          }
         }
       } else if (req.method === 'POST') {
         // Handle POST requests (client-to-server messages)
@@ -726,23 +719,29 @@ async function main() {
             throw new Error(`Unknown method: ${method}`);
           }
           
-          res.json({
-            jsonrpc: "2.0",
-            id: id,
-            result: result
-          });
+          // Only send response if headers haven't been sent yet
+          if (!res.headersSent) {
+            res.json({
+              jsonrpc: "2.0",
+              id: id,
+              result: result
+            });
+          }
           
         } catch (error) {
           console.error('Failed to handle POST request:', error);
-          res.status(500).json({
-            jsonrpc: "2.0",
-            id: req.body?.id || null,
-            error: {
-              code: -32603,
-              message: 'Internal error',
-              data: error instanceof Error ? error.message : String(error)
-            }
-          });
+          // Only send error response if headers haven't been sent yet
+          if (!res.headersSent) {
+            res.status(500).json({
+              jsonrpc: "2.0",
+              id: req.body?.id || null,
+              error: {
+                code: -32603,
+                message: 'Internal error',
+                data: error instanceof Error ? error.message : String(error)
+              }
+            });
+          }
         }
       } else if (req.method === 'OPTIONS') {
         // Handle CORS preflight
