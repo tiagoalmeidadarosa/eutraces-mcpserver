@@ -20,6 +20,7 @@ import {
   ReadResourceRequestSchema,
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
+  ListResourceTemplatesRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { DocumentProcessor, ProcessedKnowledge } from './documentProcessor.js';
 import fs from 'fs';
@@ -130,6 +131,41 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
 });
 
 /**
+ * Handler for listing resource templates
+ * Provides URI templates for dynamic resource construction
+ */
+server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+  return {
+    resourceTemplates: [
+      {
+        uriTemplate: "eudr://document/{filename}",
+        name: "EUDR Document",
+        description: "Access any EUDR document by filename",
+        mimeType: "text/plain"
+      },
+      {
+        uriTemplate: "eudr://endpoint/{name}",
+        name: "EUDR API Endpoint",
+        description: "Access any EUDR API endpoint by name",
+        mimeType: "application/json"
+      },
+      {
+        uriTemplate: "eudr://example/{name}",
+        name: "EUDR Example",
+        description: "Access any EUDR request/response example by name",
+        mimeType: "application/xml"
+      },
+      {
+        uriTemplate: "eudr://rule/{category}",
+        name: "EUDR Business Rule",
+        description: "Access business rules by category",
+        mimeType: "text/plain"
+      }
+    ]
+  };
+});
+
+/**
  * Handler for reading resource contents
  */
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
@@ -180,6 +216,21 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
           uri: request.params.uri,
           mimeType: "application/xml",
           text: example.content
+        }]
+      };
+    }
+
+    case 'rule': {
+      const rules = knowledgeBase!.rules.filter(r => r.category === decodedId);
+      if (rules.length === 0) {
+        throw new Error(`No rules found for category ${decodedId}`);
+      }
+      const ruleText = rules.map(r => `${r.name}\n${r.description}`).join('\n\n');
+      return {
+        contents: [{
+          uri: request.params.uri,
+          mimeType: "text/plain",
+          text: ruleText
         }]
       };
     }
