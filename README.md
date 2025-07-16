@@ -69,7 +69,7 @@ The server automatically processes:
 
 1. **Prerequisites**:
    - Node.js 16+
-   - EUDR API v1.3 documentation in: `C:\Users\tiago\Downloads\EUDR API v1.3\EUDR API – Conformance Tests Documentation v1.3`
+   - EUDR API v1.3 documentation in: `documents/`
 
 2. **Installation**:
    ```bash
