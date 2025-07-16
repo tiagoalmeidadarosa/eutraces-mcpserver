@@ -656,13 +656,32 @@ async function main() {
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       });
       
-      // Send initial connection message
-      res.write('data: {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {"protocolVersion": "2024-11-05", "capabilities": {"resources": {}, "tools": {}, "prompts": {}}, "serverInfo": {"name": "eutraces-mcpserver", "version": "0.1.0"}}}\n\n');
+      // Send initial connection message with proper SSE format
+      res.write('data: {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}\n\n');
       
-      // Send a final message and close connection immediately
-      // This provides connectivity verification without keeping connection alive
-      res.write('data: {"jsonrpc": "2.0", "method": "notifications/ready", "params": {}}\n\n');
-      res.end();
+      // Keep connection alive with minimal resource usage
+      // Send periodic keepalive but close after a short timeout
+      const keepAlive = setInterval(() => {
+        res.write(': keepalive\n\n');
+      }, 30000);
+      
+      // Auto-close connection after 60 seconds to prevent resource buildup
+      const timeout = setTimeout(() => {
+        clearInterval(keepAlive);
+        res.end();
+      }, 60000);
+      
+      // Handle client disconnect
+      req.on('close', () => {
+        clearInterval(keepAlive);
+        clearTimeout(timeout);
+      });
+      
+      req.on('error', () => {
+        clearInterval(keepAlive);
+        clearTimeout(timeout);
+        res.end();
+      });
     });
     
     // Handle MCP protocol messages via POST
