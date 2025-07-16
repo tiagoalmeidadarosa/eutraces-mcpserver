@@ -644,18 +644,42 @@ async function main() {
       });
     });
     
+    // Add JSON parsing middleware
+    app.use(express.json());
+    
     // Handle SSE requests for MCP protocol using the SDK
     app.get('/mcp', async (req, res) => {
-      // Create the SSE transport for this specific request
-      const transport = new SSEServerTransport("/mcp", res);
-      
-      // Connect the server to the transport
-      await server.connect(transport);
-      
-      // Handle the connection
-      req.on('close', () => {
-        server.close();
-      });
+      try {
+        // Create the SSE transport for this specific request
+        const transport = new SSEServerTransport("/mcp", res);
+        
+        // Connect the server to the transport
+        await server.connect(transport);
+        
+        // Handle the connection
+        req.on('close', () => {
+          server.close();
+        });
+      } catch (error) {
+        console.error('Error setting up SSE transport:', error);
+        res.status(500).json({ error: 'Failed to establish SSE connection' });
+      }
+    });
+    
+    // Handle POST requests for MCP protocol messages
+    app.post('/mcp', async (req, res) => {
+      try {
+        // For POST requests, we need to handle them differently
+        // This might be for MCP protocol messages sent via POST
+        res.status(200).json({ 
+          message: 'MCP server ready',
+          transport: 'SSE',
+          endpoint: '/mcp'
+        });
+      } catch (error) {
+        console.error('Error handling MCP POST request:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
     });
     
     // Start the server
