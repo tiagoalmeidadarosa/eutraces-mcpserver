@@ -174,3 +174,5 @@ You can now ask questions like:
 - "What are the PDF validation rules for DDS?"
 
 The server will automatically query the processed documentation and provide accurate answers based on official files.
+
+Good examples here: https://simplescraper.io/blog/how-to-mcp
