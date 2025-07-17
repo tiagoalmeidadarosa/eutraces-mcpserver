@@ -68,8 +68,9 @@ function createMCPServer(): McpServer {
     instructions: `Instructions for using these tools...`
   });
 
-  // Note: Resource registration syntax changed in new MCP SDK
-  // For now, just register tools and prompts which are working
+  // Note: Resource registration syntax for newer MCP SDK versions is still being finalized
+  // For now, the tools provide equivalent functionality for accessing EUDR content
+  // Tools offer more flexibility for search and filtering operations
 
   // Register tools with corrected syntax
   mcpServer.tool("query_endpoint", "Query information about specific EUDR API endpoints", {
