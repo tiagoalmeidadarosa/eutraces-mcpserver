@@ -571,6 +571,8 @@ function createMCPServer(): Server {
 
 async function main() {
   try {
+    const transports: Record<string, SSEServerTransport> = {};
+
     // Initialize the knowledge base
     await initializeKnowledgeBase();
     
@@ -598,189 +600,75 @@ async function main() {
         examples: knowledgeBase?.examples.length || 0
       });
     });
+
+    // Create a new MCP server instance for this connection
+    const server = createMCPServer();
     
-    // Store active MCP servers by connection ID
-    const activeServers = new Map<string, any>();
-    
-    // MCP SSE endpoint - GET for initial connection
+    // MCP SSE endpoint - GET for establishing SSE connection
     app.get('/mcp', async (req, res) => {
       console.log('New MCP SSE connection from:', req.ip);
-      
+
+      // Create SSE transport - this handles all SSE protocol details
+      const transport = new SSEServerTransport('/messages', res);
+
+      // store transport for future messages
+      transports[transport.sessionId] = transport;
+
+      // set SSE headers
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.setHeader('Mcp-Session-Id', transport.sessionId);
+
       try {
-        // Create a new MCP server instance for this connection
-        const server = createMCPServer();
-        const connectionId = `${req.ip}-${Date.now()}`;
-        activeServers.set(connectionId, server);
-        
-        // Create SSE transport and let it handle the connection
-        const transport = new SSEServerTransport('/mcp', res);
-        
         // Connect server to transport
         await server.connect(transport);
         console.log('MCP server connected via SSE transport');
-        
-        // Handle client disconnect
-        req.on('close', () => {
-          console.log('MCP SSE client disconnected');
-          activeServers.delete(connectionId);
-          server.close();
-        });
-        
-        req.on('error', (err) => {
-          console.error('MCP SSE connection error:', err);
-          activeServers.delete(connectionId);
-          server.close();
-        });
         
       } catch (error) {
         console.error('Failed to setup MCP SSE connection:', error);
         if (!res.headersSent) {
           res.status(500).json({ error: 'Failed to setup MCP connection' });
         }
+        else {
+          res.end();
+        }
+
+        // clean up transport
+        if (transports[transport.sessionId]) {
+          delete transports[transport.sessionId];
+        }
       }
     });
-    
-    // MCP SSE endpoint - POST for sending messages
-    app.post('/mcp', express.json(), async (req, res) => {
-      console.log('MCP POST request from:', req.ip, 'Body:', req.body);
+
+    // MCP endpoint - POST /messages for handling JSON-RPC method calls
+    app.post('/messages', express.json(), async (req, res) => {
+      console.log('MCP POST request from:', req.ip, 'Method:', req.body?.method);
+
+      const sessionId = req.query.sessionId?.toString() || '';
+      const rpcId = (req.body && req.body.id !== undefined) ? req.body.id : null;
+      
+      const transport = transports[sessionId];
+
+      if (!transport || !(transport instanceof SSEServerTransport)) {
+        return res.status(404).json({
+          jsonrpc: '2.0',
+          error: { code: -32001, message: 'Session not found or not an SSE session' },
+          id: rpcId
+        });
+      }
       
       try {
-        if (!knowledgeBase) {
-          await initializeKnowledgeBase();
-        }
-        
-        // Set CORS headers
-        res.header('Access-Control-Allow-Origin', '*');
-        res.header('Access-Control-Allow-Credentials', 'true');
-        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-        
-        // Handle the request based on the method
-        if (req.body && req.body.method) {
-          switch (req.body.method) {
-            case 'initialize':
-              res.json({
-                protocolVersion: "2024-11-05",
-                capabilities: {
-                  resources: {},
-                  tools: {},
-                  prompts: {},
-                },
-                serverInfo: {
-                  name: "eutraces-mcpserver",
-                  version: "0.1.0",
-                }
-              });
-              break;
-              
-            case 'tools/list':
-              const tools = [
-                {
-                  name: "get_document",
-                  description: "Retrieve a specific EUDR document by filename",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      filename: {
-                        type: "string",
-                        description: "The filename to retrieve"
-                      }
-                    },
-                    required: ["filename"]
-                  }
-                },
-                {
-                  name: "search_documents",
-                  description: "Search through EUDR documents using natural language",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      query: {
-                        type: "string",
-                        description: "Natural language search query"
-                      }
-                    },
-                    required: ["query"]
-                  }
-                },
-                {
-                  name: "get_api_endpoint",
-                  description: "Get information about a specific EUDR API endpoint",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      endpoint: {
-                        type: "string",
-                        description: "The API endpoint name"
-                      }
-                    },
-                    required: ["endpoint"]
-                  }
-                },
-                {
-                  name: "get_validation_rule",
-                  description: "Retrieve a specific validation rule by ID",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      rule_id: {
-                        type: "string",
-                        description: "The rule ID (e.g., 'R001')"
-                      }
-                    },
-                    required: ["rule_id"]
-                  }
-                }
-              ];
-              res.json({ tools });
-              break;
-              
-            case 'resources/list':
-              const resources = [];
-
-              // Add documents as resources
-              for (const doc of knowledgeBase!.documents) {
-                resources.push({
-                  uri: `eudr://document/${encodeURIComponent(doc.filename)}`,
-                  mimeType: "text/plain",
-                  name: doc.title,
-                  description: `${doc.category} - ${doc.filename} (${doc.type.toUpperCase()})`
-                });
-              }
-
-              // Add endpoints as resources
-              for (const endpoint of knowledgeBase!.endpoints) {
-                resources.push({
-                  uri: `eudr://endpoint/${encodeURIComponent(endpoint.name)}`,
-                  mimeType: "application/json",
-                  name: endpoint.name,
-                  description: `${endpoint.method} ${endpoint.url} - ${endpoint.description}`
-                });
-              }
-
-              // Add examples as resources
-              for (const example of knowledgeBase!.examples) {
-                resources.push({
-                  uri: `eudr://example/${encodeURIComponent(example.name)}`,
-                  mimeType: "application/xml",
-                  name: example.name,
-                  description: `Example: ${example.name}`
-                });
-              }
-
-              res.json({ resources });
-              break;
-              
-            default:
-              res.status(400).json({ error: `Unknown method: ${req.body.method}` });
-          }
-        } else {
-          res.status(400).json({ error: 'Invalid request format' });
-        }
-        
+        await transport.handlePostMessage(req, res);
       } catch (error) {
-        console.error('Failed to handle MCP POST request:', error);
-        res.status(500).json({ error: 'Failed to handle MCP request' });
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: { code: -32603, message: 'Internal server error handling message' },
+            id: rpcId
+          });
+        }
       }
     });
     
@@ -789,6 +677,7 @@ async function main() {
       console.log(`EUDR MCP Server (SSE) running on port ${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(`MCP SSE endpoint: http://localhost:${PORT}/mcp`);
+      console.log(`MCP Messages endpoint: http://localhost:${PORT}/messages`);
     });
     
   } catch (error) {
