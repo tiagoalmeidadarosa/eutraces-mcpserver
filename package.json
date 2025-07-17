@@ -19,7 +19,7 @@
     "mcp-sse": "node build/mcp-sse-server.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "0.6.0",
+    "@modelcontextprotocol/sdk": "1.15.1",
     "@types/pdf-parse": "^1.1.5",
     "mammoth": "^1.9.1",
     "pdfjs-dist": "^5.3.93",
